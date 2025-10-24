@@ -5,7 +5,9 @@ const bcrypt = require("bcrypt");
 async function main() {
   const password = "Asdfasdf@123";
   const hash = await bcrypt.hash(password, 10);
-  const kyawsoe = await prisma.user.upsert({
+
+  // Your account
+  const kyawSoe = await prisma.user.upsert({
     where: { username: "kyawsoe" },
     update: {},
     create: {
@@ -15,29 +17,59 @@ async function main() {
       displayName: "Kyaw Soe",
     },
   });
-  const ayeaye = await prisma.user.upsert({
-    where: { username: "ayeaye" },
+
+  // Friends
+  const aungSiThu = await prisma.user.upsert({
+    where: { username: "aungsithu" },
     update: {},
     create: {
-      username: "ayeaye",
-      email: "ayeaye@gmail.com",
+      username: "aungsithu",
+      email: "aungsithu@gmail.com",
       passwordHash: hash,
-      displayName: "Aye Aye",
+      displayName: "Aung Si Thu",
     },
   });
 
-  const kyawkyaw = await prisma.user.upsert({
-    where: { username: "kyawkyaw" },
+  const kyawThetAung = await prisma.user.upsert({
+    where: { username: "kyawthetaung" },
     update: {},
     create: {
-      username: "kyawkyaw",
-      email: "kyawkyaw@gmail.com",
+      username: "kyawthetaung",
+      email: "kyawthetaung@gmail.com",
       passwordHash: hash,
-      displayName: "Kyaw Kyaw",
+      displayName: "Kyaw Thet Aung",
     },
   });
 
-  console.log("User successfully seed", { kyawsoe, kyawkyaw, ayeaye });
+  const htayThanAung = await prisma.user.upsert({
+    where: { username: "htaythanaung" },
+    update: {},
+    create: {
+      username: "htaythanaung",
+      email: "htaythanaung@gmail.com",
+      passwordHash: hash,
+      displayName: "Htay Than Aung",
+    },
+  });
+
+  const maydMoeKo = await prisma.user.upsert({
+    where: { username: "maydmoeko" },
+    update: {},
+    create: {
+      username: "maydmoeko",
+      email: "maydmoeko@gmail.com",
+      passwordHash: hash,
+      displayName: "Mayd Moe Ko",
+    },
+  });
+
+  console.log("Users successfully seeded", {
+    kyawSoe,
+    aungSiThu,
+    kyawThetAung,
+    htayThanAung,
+    maydMoeKo,
+  });
 }
 
 main()
