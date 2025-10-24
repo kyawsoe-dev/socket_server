@@ -1,2 +1,17 @@
+# Node modules
 node_modules/
 
+# Optional: environment files
+.env
+
+# Optional: logs
+logs/
+*.log
+
+# Optional: OS files
+.DS_Store
+Thumbs.db
+
+# Optional: Prisma generated files
+prisma/dev.db
+.env
