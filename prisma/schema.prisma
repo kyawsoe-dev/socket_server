@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int                  @id @default(autoincrement())
+  uuid         String               @unique @default(uuid())
+  username     String               @unique
+  email        String?              @unique
+  passwordHash String
+  displayName  String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  members      ConversationMember[]
+  messages     Message[]
+}
+
+model Conversation {
+  id            Int                  @id @default(autoincrement())
+  uuid          String               @unique @default(uuid())
+  isGroup       Boolean              @default(false)
+  title         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  members       ConversationMember[]
+  messages      Message[]
+  lastMessage   Message?             @relation("LastMessage", fields: [lastMessageId], references: [id])
+  lastMessageId Int?                 @unique
+}
+
+model ConversationMember {
+  id             Int          @id @default(autoincrement())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId Int
+  user           User         @relation(fields: [userId], references: [id])
+  userId         Int
+  role           MemberRole   @default(MEMBER)
+  joinedAt       DateTime     @default(now())
+  lastReadAt     DateTime?
+
+  @@unique([conversationId, userId])
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  uuid           String       @unique @default(uuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId Int
+  sender         User         @relation(fields: [senderId], references: [id])
+  senderId       Int
+  content        String?
+  type           MessageType  @default(TEXT)
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+
+  conversationLastMessage Conversation? @relation("LastMessage")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  SYSTEM
+  FILE
+}
