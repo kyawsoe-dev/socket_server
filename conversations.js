@@ -4,17 +4,53 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const auth = require("./middleware/auth");
 
-// list conversations for user
+// list conversations
 router.get("/", auth, async (req, res) => {
-  const convs = await prisma.conversation.findMany({
-    where: { members: { some: { userId: req.user.id } } },
-    include: {
-      members: { include: { user: true } },
-      lastMessage: true,
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-  res.json(convs);
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const totalConvs = await prisma.conversation.count({
+      where: { members: { some: { userId: req.user.id } } },
+    });
+
+    const convs = await prisma.conversation.findMany({
+      where: { members: { some: { userId: req.user.id } } },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                uuid: true,
+                username: true,
+                email: true,
+                displayName: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            },
+          },
+        },
+        lastMessage: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      skip,
+      take: limit,
+    });
+
+    res.json({
+      page,
+      limit,
+      total: totalConvs,
+      totalPages: Math.ceil(totalConvs / limit),
+      data: convs,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch conversations" });
+  }
 });
 
 // create 1:1 conversation
