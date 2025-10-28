@@ -12,7 +12,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "JWT_SECRET";
 
 const app = express();
 
-app.use(cors({ origin: "*", methods: ["GET", "POST", "PUT", "DELETE"], allowedHeaders: "*" }));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: "*",
+  })
+);
 app.use(express.json());
 
 app.use("/api/v1/auth", authRouter);
@@ -27,7 +33,9 @@ app.get("/", (req, res) => {
 });
 
 app.use((req, res) => {
-  res.status(404).json({ status: 404, message: `Route ${req.originalUrl} not found` });
+  res
+    .status(404)
+    .json({ status: 404, message: `Route ${req.originalUrl} not found` });
 });
 
 app.use((err, req, res, next) => {
@@ -53,7 +61,9 @@ io.use(async (socket, next) => {
   if (!token) return next(new Error("Auth error: token required"));
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+    });
     if (!user) return next(new Error("Auth error: invalid user"));
     socket.user = user;
     next();
@@ -72,7 +82,7 @@ io.on("connection", (socket) => {
   onlineUsers.set(userId, onlineSet);
   socket.broadcast.emit("user online", { userId });
 
-  // Send current online users to new client
+  // Current online users
   const onlineIds = Array.from(onlineUsers.keys());
   socket.emit("users online", onlineIds);
 
@@ -126,6 +136,27 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("edit message", async ({ messageId, content }, ack) => {
+    try {
+      const msg = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: { conversation: true },
+      });
+      if (!msg) return ack({ success: false, error: "Message not found" });
+      if (msg.senderId !== userId)
+        return ack({ success: false, error: "Not your message" });
+      const updated = await prisma.message.update({
+        where: { id: messageId },
+        data: { content, updatedAt: new Date() },
+      });
+      io.to(`conv_${msg.conversationId}`).emit("message edited", updated);
+      ack({ success: true, message: updated });
+    } catch (err) {
+      console.error("Edit message error:", err);
+      ack({ success: false, error: "Edit failed" });
+    }
+  });
+
   socket.on("typing", (data) => {
     socket.to(`conv_${data.conversationId}`).emit("typing", {
       conversationId: data.conversationId,
@@ -148,7 +179,9 @@ io.on("connection", (socket) => {
   ["offer", "answer", "candidate"].forEach((event) => {
     socket.on(`webrtc:${event}`, ({ toUserId, ...data }) => {
       const sockets = userSockets.get(toUserId) || new Set();
-      sockets.forEach((sid) => io.to(sid).emit(`webrtc:${event}`, { fromUserId: userId, ...data }));
+      sockets.forEach((sid) =>
+        io.to(sid).emit(`webrtc:${event}`, { fromUserId: userId, ...data })
+      );
     });
   });
 
