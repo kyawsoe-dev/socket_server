@@ -203,4 +203,47 @@ router.get("/users/search", auth, async (req, res) => {
   }
 });
 
+// suggest user
+// GET /users/suggested
+router.get("/users/suggested", auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const existingMemberConversations =
+      await prisma.conversationMember.findMany({
+        where: { userId },
+        select: { conversationId: true },
+      });
+
+    const conversationIds = existingMemberConversations.map(
+      (c) => c.conversationId
+    );
+
+    const existingUserIds = await prisma.conversationMember.findMany({
+      where: {
+        conversationId: { in: conversationIds },
+        NOT: { userId },
+      },
+      select: { userId: true },
+    });
+
+    const excludedUserIds = Array.from(
+      new Set(existingUserIds.map((u) => u.userId))
+    );
+    excludedUserIds.push(userId);
+
+    const suggestedUsers = await prisma.user.findMany({
+      where: { id: { notIn: excludedUserIds } },
+      select: { id: true, username: true, displayName: true },
+      take: 5,
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json(suggestedUsers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch suggested users" });
+  }
+});
+
 module.exports = router;
