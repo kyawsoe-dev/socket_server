@@ -279,40 +279,99 @@ router.put("/messages/:messageId", auth, async (req, res) => {
 
 // Add member to group
 router.post("/:conversationId/members", auth, async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const { userId } = req.body;
-    const ownerId = req.user.id;
+  const { conversationId } = req.params;
+  const { userId: newUserId } = req.body;
+  const ownerId = req.user.id;
 
+  const convId = Number(conversationId);
+  if (isNaN(convId) || convId <= 0) {
+    return res.status(400).json({ error: "Invalid conversation ID" });
+  }
+
+  const userIdToAdd = Number(newUserId);
+  if (isNaN(userIdToAdd) || userIdToAdd <= 0) {
+    return res.status(400).json({ error: "Invalid user ID" });
+  }
+
+  try {
     const conv = await prisma.conversation.findUnique({
-      where: { id: Number(conversationId) },
-      include: { members: true },
+      where: { id: convId },
+      include: {
+        members: {
+          select: { userId: true, role: true },
+        },
+      },
     });
 
-    if (!conv || !conv.isGroup)
-      return res.status(404).json({ error: "Group not found" });
+    if (!conv) return res.status(404).json({ error: "Group not found" });
+    if (!conv.isGroup) {
+      return res.status(400).json({ error: "Cannot add member to a private chat" });
+    }
 
     const isOwner = conv.members.some(
       (m) => m.userId === ownerId && m.role === "OWNER"
     );
-    if (!isOwner)
-      return res.status(403).json({ error: "Only owner can add members" });
+    if (!isOwner) {
+      return res.status(403).json({ error: "Only the group owner can add members" });
+    }
 
-    if (conv.members.some((m) => m.userId === userId))
-      return res.status(400).json({ error: "Already member" });
+    if (conv.members.some((m) => m.userId === userIdToAdd)) {
+      return res.status(400).json({ error: "User is already a member" });
+    }
+    if (userIdToAdd === ownerId) {
+      return res.status(400).json({ error: "You are already in the group" });
+    }
 
     const newMember = await prisma.conversationMember.create({
       data: {
         conversationId: conv.id,
-        userId,
+        userId: userIdToAdd,
         role: "MEMBER",
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+          },
+        },
       },
     });
 
-    res.json(newMember);
+    const updatedConv = await prisma.conversation.findUnique({
+      where: { id: conv.id },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                displayName: true,
+
+              },
+            },
+          },
+        },
+        messages: { take: 0 },
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: "Member added successfully",
+      member: newMember,
+      conversation: updatedConv,
+    });
   } catch (err) {
     console.error("Add member error:", err);
-    res.status(500).json({ error: "Add member failed" });
+
+    if (err.code === "P2003") {
+      return res.status(400).json({ error: "User does not exist" });
+    }
+
+    return res.status(500).json({ error: "Failed to add member" });
   }
 });
 
