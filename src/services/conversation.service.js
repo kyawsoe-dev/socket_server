@@ -138,6 +138,7 @@ exports.sendMessage = async (userId, conversationId, { content, type = "TEXT", m
 
 // Edit Message
 exports.editMessage = async (userId, messageId, { content }) => {
+    console.log(userId, messageId, content, "eidt serveic")
     const msg = await prisma.message.findUnique({
         where: { id: Number(messageId) },
     });
@@ -150,6 +151,22 @@ exports.editMessage = async (userId, messageId, { content }) => {
         data: { content, updatedAt: new Date() },
     });
 };
+
+// Delete Message
+exports.deleteMessage = async (userId, messageId) => {
+    const msg = await prisma.message.findUnique({
+        where: { id: Number(messageId) },
+        include: { conversation: true },
+    });
+
+    if (!msg) throw { status: 404, message: "Message not found" };
+    if (msg.senderId !== userId) throw { status: 403, message: "Not your message" };
+
+    await prisma.message.delete({ where: { id: Number(messageId) } });
+
+    return { success: true, message: "Message deleted", messageId: msg.id, conversationId: msg.conversationId };
+};
+
 
 // Add Member
 exports.addMember = async (ownerId, conversationId, userIdToAdd) => {
@@ -253,4 +270,56 @@ exports.suggestedUsers = async (userId) => {
         take: 5,
         orderBy: { createdAt: "desc" },
     });
+};
+
+
+
+// Details user
+exports.getUserDetails = async (currentUserId, userId) => {
+    if (!userId) throw { status: 400, message: "User ID required" };
+
+    const user = await prisma.user.findUnique({
+        where: { id: Number(userId) },
+        select: {
+            id: true,
+            username: true,
+            displayName: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+            members: {
+                select: {
+                    lastReadAt: true,
+                    conversation: {
+                        select: { id: true, title: true, isGroup: true },
+                    },
+                },
+            },
+            messages: {
+                select: { createdAt: true },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+            },
+        },
+    });
+
+    if (!user) throw { status: 404, message: "User not found" };
+
+    let lastActive = null;
+    if (user.messages.length > 0) {
+        lastActive = user.messages[0].createdAt;
+    } else if (user.members.length > 0) {
+        lastActive = user.members
+            .map((m) => m.lastReadAt)
+            .filter(Boolean)
+            .sort((a, b) => b - a)[0];
+    }
+
+    return {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        email: user.email,
+        lastActive,
+    };
 };

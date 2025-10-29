@@ -61,17 +61,18 @@ enum MemberRole {
 }
 
 model Message {
-  id             Int          @id @default(autoincrement())
-  uuid           String       @unique @default(uuid())
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  conversationId Int
-  sender         User         @relation(fields: [senderId], references: [id])
-  senderId       Int
-  content        String?
-  type           MessageType  @default(TEXT)
-  metadata       Json?
-  createdAt      DateTime     @default(now())
-
+  id                      Int           @id @default(autoincrement())
+  uuid                    String        @unique @default(uuid())
+  conversation            Conversation  @relation(fields: [conversationId], references: [id])
+  conversationId          Int
+  sender                  User          @relation(fields: [senderId], references: [id])
+  senderId                Int
+  content                 String?
+  type                    MessageType   @default(TEXT)
+  metadata                Json?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime?
+  
   conversationLastMessage Conversation? @relation("LastMessage")
 }
 

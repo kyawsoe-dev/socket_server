@@ -62,11 +62,26 @@ exports.sendMessage = async (req, res) => {
 
 // Edit message
 exports.editMessage = async (req, res) => {
+    console.log(req.body, "Body edit")
     try {
         const data = await conversationService.editMessage(req.user.id, req.params.messageId, req.body);
         res.json(data);
     } catch (err) {
         res.status(err.status || 500).json({ error: err.message });
+    }
+};
+
+// Delete Message
+exports.deleteMessage = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { messageId } = req.params;
+
+        const data = await conversationService.deleteMessage(userId, messageId);
+        res.json({ success: true, data });
+    } catch (err) {
+        console.error("Delete message error:", err);
+        res.status(err.status || 500).json({ success: false, error: err.message });
     }
 };
 
@@ -109,4 +124,18 @@ exports.suggestedUsers = async (req, res) => {
         console.log(err, "error")
         res.status(500).json({ error: err.message });
     }
+};
+
+// Details user
+exports.getUserDetails = async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const userId = req.params.userId;
+
+    const data = await conversationService.getUserDetails(currentUserId, userId);
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("Get user details error:", err);
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
 };

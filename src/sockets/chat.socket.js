@@ -75,7 +75,7 @@ function setupChatSocket(io) {
                 io.to(`conv_${payload.conversationId}`).emit("chat message", publicMsg);
                 if (ack) ack({ success: true, message: publicMsg });
             } catch (err) {
-                console.error("💥 Message error:", err);
+                console.error("Message error:", err);
                 if (ack) ack({ success: false, error: err.message });
             }
         });
@@ -98,10 +98,34 @@ function setupChatSocket(io) {
                 io.to(`conv_${msg.conversationId}`).emit("message edited", updated);
                 ack({ success: true, message: updated });
             } catch (err) {
-                console.error("💥 Edit message error:", err);
+                console.error("Edit message error:", err);
                 ack({ success: false, error: "Edit failed" });
             }
         });
+
+
+        // Delete message
+        socket.on("delete message", async ({ messageId }, ack) => {
+            try {
+                const result = await prisma.message.findUnique({
+                    where: { id: Number(messageId) },
+                    include: { conversation: true },
+                });
+
+                if (!result) return ack({ success: false, error: "Message not found" });
+                if (result.senderId !== socket.user.id)
+                    return ack({ success: false, error: "Not your message" });
+
+                await prisma.message.delete({ where: { id: Number(messageId) } });
+
+                io.to(`conv_${result.conversationId}`).emit("message deleted", { messageId: result.id });
+                ack({ success: true, messageId: result.id });
+            } catch (err) {
+                console.error("Delete message error:", err);
+                ack({ success: false, error: "Delete failed" });
+            }
+        });
+
 
         // Typing indicator
         socket.on("typing", (data) => {
