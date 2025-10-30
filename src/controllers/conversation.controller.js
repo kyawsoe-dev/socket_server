@@ -40,6 +40,25 @@ exports.createGroup = async (req, res) => {
     }
 };
 
+// Update Group Title
+exports.updateGroupTitle = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const { title } = req.body;
+
+        const updatedGroup = await conversationService.updateGroupTitle(
+            req.user.id,
+            conversationId,
+            title
+        );
+
+        res.json({ message: "Group title updated", group: updatedGroup });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};
+
+
 // Fetch messages
 exports.fetchMessages = async (req, res) => {
     try {
@@ -127,14 +146,14 @@ exports.suggestedUsers = async (req, res) => {
 
 // Details user
 exports.getUserDetails = async (req, res) => {
-  try {
-    const currentUserId = req.user.id;
-    const userId = req.params.userId;
+    try {
+        const currentUserId = req.user.id;
+        const userId = req.params.userId;
 
-    const data = await conversationService.getUserDetails(currentUserId, userId);
-    res.json({ success: true, data });
-  } catch (err) {
-    console.error("Get user details error:", err);
-    res.status(err.status || 500).json({ success: false, error: err.message });
-  }
+        const data = await conversationService.getUserDetails(currentUserId, userId);
+        res.json({ success: true, data });
+    } catch (err) {
+        console.error("Get user details error:", err);
+        res.status(err.status || 500).json({ success: false, error: err.message });
+    }
 };

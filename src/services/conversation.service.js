@@ -94,6 +94,24 @@ exports.createGroup = async (creatorId, { title, memberIds }) => {
     });
 };
 
+// Update Group Title
+exports.updateGroupTitle = async (userId, conversationId, title) => {
+    if (!title || title.trim() === "") throw new Error("Title cannot be empty");
+
+    const isMember = await prisma.conversationMember.findFirst({
+        where: { conversationId: Number(conversationId), userId },
+    });
+
+    if (!isMember) throw new Error("You are not a member of this group");
+
+    const updatedGroup = await prisma.conversation.update({
+        where: { id: Number(conversationId) },
+        data: { title },
+    });
+
+    return updatedGroup;
+};
+
 // Fetch Messages
 exports.fetchMessages = async (conversationId, { cursor, limit = 30 }) => {
     const where = { conversationId: Number(conversationId) };
@@ -222,18 +240,33 @@ exports.removeMember = async (ownerId, conversationId, targetUserId) => {
 // Search User
 exports.searchUser = async (userId, query) => {
     if (!query) throw new Error("Query required");
-    return prisma.user.findMany({
+
+    const users = await prisma.user.findMany({
         where: {
             OR: [
                 { username: { contains: query, mode: "insensitive" } },
                 { displayName: { contains: query, mode: "insensitive" } },
+                { email: { contains: query, mode: "insensitive" } },
             ],
             NOT: { id: userId },
         },
         select: { id: true, username: true, displayName: true },
         take: 10,
     });
+
+    const groups = await prisma.conversation.findMany({
+        where: {
+            isGroup: true,
+            title: { contains: query, mode: "insensitive" },
+            members: { some: { userId } },
+        },
+        select: { id: true, title: true, isGroup: true },
+        take: 10,
+    });
+
+    return { users, groups };
 };
+
 
 // Suggested Users
 exports.suggestedUsers = async (userId) => {

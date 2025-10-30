@@ -7,6 +7,7 @@ router.get("/", auth, conversationController.listConversations);
 router.get("/:id", auth, conversationController.getConversation);
 router.post("/one-to-one", auth, conversationController.createOneToOne);
 router.post("/group", auth, conversationController.createGroup);
+router.patch("/group/:conversationId/title", auth, conversationController.updateGroupTitle);
 router.get("/:conversationId/messages", auth, conversationController.fetchMessages);
 router.post("/:conversationId/messages", auth, conversationController.sendMessage);
 router.put("/messages/:messageId", auth, conversationController.editMessage);
