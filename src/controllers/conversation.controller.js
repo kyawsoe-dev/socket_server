@@ -62,7 +62,6 @@ exports.sendMessage = async (req, res) => {
 
 // Edit message
 exports.editMessage = async (req, res) => {
-    console.log(req.body, "Body edit")
     try {
         const data = await conversationService.editMessage(req.user.id, req.params.messageId, req.body);
         res.json(data);

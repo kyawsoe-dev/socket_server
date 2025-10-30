@@ -138,7 +138,6 @@ exports.sendMessage = async (userId, conversationId, { content, type = "TEXT", m
 
 // Edit Message
 exports.editMessage = async (userId, messageId, { content }) => {
-    console.log(userId, messageId, content, "eidt serveic")
     const msg = await prisma.message.findUnique({
         where: { id: Number(messageId) },
     });
