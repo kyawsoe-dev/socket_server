@@ -17,5 +17,7 @@ router.delete("/:conversationId/members/:userId", auth, conversationController.r
 router.get("/users/search", auth, conversationController.searchUser);
 router.get("/users/suggested", auth, conversationController.suggestedUsers);
 router.get("/users/:userId", auth, conversationController.getUserDetails);
+router.get('/get/turn-credentials', conversationController.fetchTurnCredentials);
+
 
 module.exports = router;
