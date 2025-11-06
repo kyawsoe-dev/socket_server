@@ -54,22 +54,22 @@ exports.createOneToOne = async (userId, otherUserId) => {
     const conv = await prisma.conversation.findFirst({
         where: {
             isGroup: false,
-            members: { some: { userId: otherUserId } },
+            AND: [
+                { members: { some: { userId: Number(userId) } } },
+                { members: { some: { userId: Number(otherUserId) } } },
+            ],
         },
-        include: { members: true },
+        include: { members: { include: { user: true } } },
     });
 
-    if (conv) {
-        const ids = conv.members.map((m) => m.userId);
-        if (ids.includes(userId) && ids.includes(Number(otherUserId))) return conv;
-    }
+    if (conv) return conv;
 
     return prisma.conversation.create({
         data: {
             isGroup: false,
             members: {
                 create: [
-                    { user: { connect: { id: userId } }, role: "MEMBER" },
+                    { user: { connect: { id: Number(userId) } }, role: "MEMBER" },
                     { user: { connect: { id: Number(otherUserId) } }, role: "MEMBER" },
                 ],
             },

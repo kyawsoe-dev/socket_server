@@ -7,6 +7,19 @@ const JWT_SECRET = process.env.JWT_SECRET || "JWT_SECRET";
 const userSockets = new Map();
 const onlineUsers = new Map();
 
+
+const webpush = require('web-push');
+const vapidKeys = {
+    publicKey: process.env.VAPID_PUBLIC_KEY,
+    privateKey: process.env.VAPID_PRIVATE_KEY
+};
+
+webpush.setVapidDetails(
+    `mailto:${process.env.VAPID_EMAIL || 'kyawsoedeveloper@gmail.com'}`,
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
+
 function setupChatSocket(io) {
     io.use(async (socket, next) => {
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
@@ -24,7 +37,8 @@ function setupChatSocket(io) {
 
     io.on("connection", async (socket) => {
         const userId = socket.user.id;
-        console.log(`Connected: user ${userId}, socket ${socket.id}`);
+        const username = socket.user.displayName || socket.user.username;
+        console.log(`Connected: user - ${username} - ${userId}, socket ${socket.id}`);
 
         // Track connections
         const socketSet = userSockets.get(userId) || new Set();
@@ -73,6 +87,44 @@ function setupChatSocket(io) {
                 };
 
                 io.to(`conv_${payload.conversationId}`).emit("chat message", publicMsg);
+
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: payload.conversationId },
+                    include: { members: { include: { user: true } } },
+                });
+
+                if (!conv || !conv.members) return;
+
+                for (const member of conv.members) {
+                    if (!member.user || member.userId === userId) continue;
+
+                    const recipientId = member.userId;
+                    const sub = member.user.pushSubscription;
+
+                    if (!onlineUsers.has(recipientId) && sub) {
+                        try {
+                            await webpush.sendNotification(
+                                sub,
+                                JSON.stringify({
+                                    title: conv.isGroup
+                                        ? `${socket.user.username} in ${conv.title || "Group"}`
+                                        : `${socket.user.username}`,
+                                    body: publicMsg.content || "(Attachment)",
+                                    data: {
+                                        conversationId: publicMsg.conversationId,
+                                        isGroup: !!conv.isGroup,
+                                    },
+                                }),
+                                {
+                                    TTL: 3600,
+                                }
+                            );
+                        } catch (pushErr) {
+                            console.error("Push error:", pushErr);
+                        }
+                    }
+                }
+
                 if (ack) ack({ success: true, message: publicMsg });
             } catch (err) {
                 console.error("Message error:", err);
@@ -149,13 +201,44 @@ function setupChatSocket(io) {
         });
 
         // WebRTC signalling
-        ["offer", "answer", "candidate"].forEach((event) => {
+
+        ["group-offer", "group-answer", "group-candidate"].forEach((event) => {
+            socket.on(`webrtc:${event}`, ({ conversationId, ...data }) => {
+                io.to(`conv_${conversationId}`).emit(`webrtc:${event}`, { fromUserId: userId, fromUsername: username, ...data });
+            });
+        });
+
+        ["offer", "answer", "candidate", "end"].forEach((event) => {
             socket.on(`webrtc:${event}`, ({ toUserId, ...data }) => {
                 const sockets = userSockets.get(toUserId) || new Set();
                 sockets.forEach((sid) =>
-                    io.to(sid).emit(`webrtc:${event}`, { fromUserId: userId, ...data })
+                    io.to(sid).emit(`webrtc:${event}`, { fromUserId: userId, fromUsername: username, ...data })
                 );
             });
+        });
+
+        socket.on("webrtc:group-end", ({ conversationId }) => {
+            io.to(`conv_${conversationId}`).emit("webrtc:group-end", { fromUserId: userId });
+        });
+
+
+        // Call rejected
+        socket.on("callRejected", ({ convId, from }) => {
+            console.log(`Call rejected by user ${from} in conversation ${convId}`);
+
+            io.to(`conv_${convId}`).emit("callRejectedNotification", { from });
+        });
+
+        // Push subscription
+        socket.on('subscribe push', async (subscription) => {
+            try {
+                await prisma.user.update({
+                    where: { id: userId },
+                    data: { pushSubscription: subscription }
+                });
+            } catch (err) {
+                console.error('Subscription error:', err);
+            }
         });
 
         // Disconnect cleanup

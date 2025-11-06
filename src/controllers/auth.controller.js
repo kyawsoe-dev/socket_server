@@ -27,3 +27,12 @@ exports.checkAvailability = async (req, res) => {
         res.status(400).json({ error: err.message });
     }
 };
+
+
+exports.getVapidPublicKey = async (req, res) => {
+    try {
+        res.send(process.env.VAPID_PUBLIC_KEY);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+};

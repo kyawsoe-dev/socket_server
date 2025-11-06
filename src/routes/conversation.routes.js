@@ -16,6 +16,6 @@ router.post("/:conversationId/members", auth, conversationController.addMember);
 router.delete("/:conversationId/members/:userId", auth, conversationController.removeMember);
 router.get("/users/search", auth, conversationController.searchUser);
 router.get("/users/suggested", auth, conversationController.suggestedUsers);
-router.get("/user/:userId", auth, conversationController.getUserDetails);
+router.get("/users/:userId", auth, conversationController.getUserDetails);
 
 module.exports = router;
