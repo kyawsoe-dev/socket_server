@@ -1,4 +1,5 @@
 const conversationService = require("../services/conversation.service");
+const https = require("https");
 require('dotenv').config();
 
 // List conversations
@@ -161,10 +162,60 @@ exports.getUserDetails = async (req, res) => {
 
 
 // TURN server config
-const METERED_API_KEY = process.env.METERED_API_KEY;
-const METERED_DOMAIN = process.env.METERED_DOMAIN || "socket-client-w3cc.metered.live";
-const EXPIRY_SECONDS = Number(process.env.EXPIRY_SECONDS) || 3600;
-const USE_TIME_LIMITED = process.env.USE_TIME_LIMITED !== "false";
+// const METERED_API_KEY = process.env.METERED_API_KEY;
+// const METERED_DOMAIN = process.env.METERED_DOMAIN || "socket-client-w3cc.metered.live";
+// const EXPIRY_SECONDS = Number(process.env.EXPIRY_SECONDS) || 3600;
+// const USE_TIME_LIMITED = process.env.USE_TIME_LIMITED !== "false";
+
+// const FALLBACK_STUN = [
+//     { urls: "stun:stun.l.google.com:19302" },
+//     { urls: "stun:stun1.l.google.com:19302" },
+//     { urls: "stun:stun2.l.google.com:19302" },
+// ];
+
+// exports.fetchTurnCredentials = async (req, res) => {
+//     try {
+//         if (!METERED_API_KEY) {
+//             return res.status(500).json({
+//                 status: "error",
+//                 message: "METERED_API_KEY is missing in environment variables",
+//             });
+//         }
+
+//         const url = `https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`;
+//         const response = await fetch(url);
+
+//         if (!response.ok) {
+//             throw new Error(`Failed to fetch TURN credentials: ${response.statusText}`);
+//         }
+
+//         const iceServers = await response.json();
+
+//         const finalIceServers = iceServers?.length > 1
+//             ? iceServers
+//             : FALLBACK_STUN;
+
+//         return res.status(200).json({
+//             status: "success",
+//             data: {
+//                 iceServers: finalIceServers,
+//                 expirySeconds: EXPIRY_SECONDS,
+//                 useTimeLimited: USE_TIME_LIMITED,
+//             },
+//         });
+//     } catch (error) {
+//         console.error("Error fetching TURN credentials:", error);
+//         return res.status(500).json({
+//             status: "error",
+//             message: "Failed to fetch TURN credentials",
+//             details: error.message,
+//         });
+//     }
+// };
+
+const XIRSYS_USERNAME = process.env.XIRSYS_USERNAME || "XIRSYS_USERNAME";
+const XIRSYS_SECRET = process.env.XIRSYS_SECRET || "XIRSYS_SECRET";
+const XIRSYS_CHANNEL = process.env.XIRSYS_CHANNEL || "XIRSYS_CHANNEL";
 
 const FALLBACK_STUN = [
     { urls: "stun:stun.l.google.com:19302" },
@@ -174,34 +225,51 @@ const FALLBACK_STUN = [
 
 exports.fetchTurnCredentials = async (req, res) => {
     try {
-        if (!METERED_API_KEY) {
-            return res.status(500).json({
-                status: "error",
-                message: "METERED_API_KEY is missing in environment variables",
+        const bodyString = JSON.stringify({ format: "urls" });
+
+        const options = {
+            host: "global.xirsys.net",
+            path: `/_turn/${XIRSYS_CHANNEL}`,
+            method: "PUT",
+            headers: {
+                "Authorization": "Basic " + Buffer.from(`${XIRSYS_USERNAME}:${XIRSYS_SECRET}`).toString("base64"),
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(bodyString)
+            }
+        };
+
+        const iceServers = await new Promise((resolve, reject) => {
+            const reqX = https.request(options, (httpRes) => {
+                let data = "";
+                httpRes.on("data", chunk => data += chunk);
+                httpRes.on("end", () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        resolve(parsed?.v?.iceServers || FALLBACK_STUN);
+                    } catch (err) {
+                        resolve(FALLBACK_STUN);
+                    }
+                });
             });
-        }
 
-        const url = `https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`;
-        const response = await fetch(url);
+            reqX.on("error", err => {
+                console.error("Xirsys request error:", err);
+                resolve(FALLBACK_STUN);
+            });
 
-        if (!response.ok) {
-            throw new Error(`Failed to fetch TURN credentials: ${response.statusText}`);
-        }
-
-        const iceServers = await response.json();
-
-        const finalIceServers = iceServers?.length > 1
-            ? iceServers
-            : FALLBACK_STUN;
+            reqX.write(bodyString);
+            reqX.end();
+        });
 
         return res.status(200).json({
             status: "success",
             data: {
-                iceServers: finalIceServers,
-                expirySeconds: EXPIRY_SECONDS,
-                useTimeLimited: USE_TIME_LIMITED,
+                iceServers,
+                expirySeconds: 3600,
+                useTimeLimited: true,
             },
         });
+
     } catch (error) {
         console.error("Error fetching TURN credentials:", error);
         return res.status(500).json({
