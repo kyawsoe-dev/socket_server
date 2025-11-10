@@ -102,8 +102,10 @@ function setupChatSocket(io) {
 
                     const recipientId = member.userId;
                     const sub = member.user.pushSubscription;
+                    const sid = member.user.webpushrSid;
 
                     if (!onlineUsers.has(recipientId)) {
+                        let sent = false;
                         if (sub) {
                             try {
                                 await webpush.sendNotification(
@@ -120,16 +122,23 @@ function setupChatSocket(io) {
                                     }),
                                     { TTL: 3600 }
                                 );
+                                sent = true;
                             } catch (pushErr) {
                                 console.error("Local push error:", pushErr);
+                                if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+                                    await prisma.user.update({
+                                        where: { id: recipientId },
+                                        data: { pushSubscription: null }
+                                    });
+                                    console.log(`Removed expired native subscription for user ${recipientId}`);
+                                }
                             }
-                        } else if (member.user.webpushrSid) {
+                        }
 
-                            console.log(publicMsg, "-------------------webpushr-------------------");
-                            
+                        if (!sent && sid) {
                             try {
                                 await sendToSubscriber({
-                                    sid: member.user.webpushrSid,
+                                    sid: sid,
                                     title: conv.isGroup
                                         ? `${socket.user.username} in ${conv.title || "Group"}`
                                         : `${socket.user.username}`,
@@ -138,12 +147,18 @@ function setupChatSocket(io) {
                                 });
                             } catch (pushErr) {
                                 console.error("Webpushr push error:", pushErr);
+                                if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+                                    await prisma.user.update({
+                                        where: { id: recipientId },
+                                        data: { webpushrSid: null }
+                                    });
+                                    console.log(`Removed expired webpushr SID for user ${recipientId}`);
+                                }
                             }
                         }
                     }
-
                 }
-
+                
                 if (ack) ack({ success: true, message: publicMsg });
             } catch (err) {
                 console.error("Message error:", err);
@@ -164,7 +179,7 @@ function setupChatSocket(io) {
                 console.error('Native push save error', e);
             }
         });
-        
+
         // Webpushr SID subscription
         socket.on('subscribe webpushr', async ({ sid }) => {
             try {
