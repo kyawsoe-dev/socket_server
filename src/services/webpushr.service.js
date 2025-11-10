@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const WEBPUSHR_BASE = process.env.WEBPUSHR_BASE || 'WEBPUSHR_BASE';
+const WEBPUSHR_BASE = process.env.WEBPUSHR_BASE || 'https://api.webpushr.com/v1';
 const HEADERS = {
     'webpushrKey': process.env.WEBPUSHR_KEY,
     'webpushrAuthToken': process.env.WEBPUSHR_AUTH_TOKEN,
@@ -29,6 +29,7 @@ async function sendToSubscriber({ sid, title, message, target_url }) {
             { title, message, target_url, sid },
             { headers: HEADERS }
         );
+        console.log(res.data, "-------------------webpushr sendToSubscriber response-------------------");
         return res.data;
     } catch (err) {
         console.error('Webpushr sendToSubscriber error:', err.response?.data || err.message);

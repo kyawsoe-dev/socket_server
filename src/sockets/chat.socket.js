@@ -124,6 +124,9 @@ function setupChatSocket(io) {
                                 console.error("Local push error:", pushErr);
                             }
                         } else if (member.user.webpushrSid) {
+
+                            console.log(publicMsg, "-------------------webpushr-------------------");
+                            
                             try {
                                 await sendToSubscriber({
                                     sid: member.user.webpushrSid,
@@ -156,11 +159,12 @@ function setupChatSocket(io) {
                     where: { id: userId },
                     data: { pushSubscription: subscription }
                 });
-            } catch (err) {
-                console.error('Subscription error:', err);
+                console.log('Native push saved for', userId);
+            } catch (e) {
+                console.error('Native push save error', e);
             }
         });
-
+        
         // Webpushr SID subscription
         socket.on('subscribe webpushr', async ({ sid }) => {
             try {
@@ -270,18 +274,6 @@ function setupChatSocket(io) {
             console.log(`Call rejected by user ${from} in conversation ${convId}`);
 
             io.to(`conv_${convId}`).emit("callRejectedNotification", { from });
-        });
-
-        // Push subscription
-        socket.on('subscribe push', async (subscription) => {
-            try {
-                await prisma.user.update({
-                    where: { id: userId },
-                    data: { pushSubscription: subscription }
-                });
-            } catch (err) {
-                console.error('Subscription error:', err);
-            }
         });
 
         // Disconnect cleanup

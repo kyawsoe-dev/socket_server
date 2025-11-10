@@ -29,10 +29,8 @@ exports.checkAvailability = async (req, res) => {
 };
 
 
-exports.getVapidPublicKey = async (req, res) => {
-    try {
-        res.send(process.env.VAPID_PUBLIC_KEY);
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+exports.getVapidPublicKey = (req, res) => {
+    const key = process.env.VAPID_PUBLIC_KEY;
+    if (!key) return res.status(500).json({ error: "VAPID key missing" });
+    res.json({ publicKey: key });
 };
