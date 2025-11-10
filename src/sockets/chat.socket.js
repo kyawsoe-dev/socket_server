@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../config/prisma");
+const { sendToSubscriber } = require('../services/webpushr.service');
+
 
 const JWT_SECRET = process.env.JWT_SECRET || "JWT_SECRET";
 
@@ -101,28 +103,42 @@ function setupChatSocket(io) {
                     const recipientId = member.userId;
                     const sub = member.user.pushSubscription;
 
-                    if (!onlineUsers.has(recipientId) && sub) {
-                        try {
-                            await webpush.sendNotification(
-                                sub,
-                                JSON.stringify({
+                    if (!onlineUsers.has(recipientId)) {
+                        if (sub) {
+                            try {
+                                await webpush.sendNotification(
+                                    sub,
+                                    JSON.stringify({
+                                        title: conv.isGroup
+                                            ? `${socket.user.username} in ${conv.title || "Group"}`
+                                            : `${socket.user.username}`,
+                                        body: publicMsg.content || "(Attachment)",
+                                        data: {
+                                            conversationId: publicMsg.conversationId,
+                                            isGroup: !!conv.isGroup,
+                                        },
+                                    }),
+                                    { TTL: 3600 }
+                                );
+                            } catch (pushErr) {
+                                console.error("Local push error:", pushErr);
+                            }
+                        } else if (member.user.webpushrSid) {
+                            try {
+                                await sendToSubscriber({
+                                    sid: member.user.webpushrSid,
                                     title: conv.isGroup
                                         ? `${socket.user.username} in ${conv.title || "Group"}`
                                         : `${socket.user.username}`,
-                                    body: publicMsg.content || "(Attachment)",
-                                    data: {
-                                        conversationId: publicMsg.conversationId,
-                                        isGroup: !!conv.isGroup,
-                                    },
-                                }),
-                                {
-                                    TTL: 3600,
-                                }
-                            );
-                        } catch (pushErr) {
-                            console.error("Push error:", pushErr);
+                                    message: publicMsg.content || "(Attachment)",
+                                    target_url: `${process.env.APP_URL}/conversations/${publicMsg.conversationId}`,
+                                });
+                            } catch (pushErr) {
+                                console.error("Webpushr push error:", pushErr);
+                            }
                         }
                     }
+
                 }
 
                 if (ack) ack({ success: true, message: publicMsg });
@@ -131,6 +147,33 @@ function setupChatSocket(io) {
                 if (ack) ack({ success: false, error: err.message });
             }
         });
+
+
+        // Push subscription
+        socket.on('subscribe push', async (subscription) => {
+            try {
+                await prisma.user.update({
+                    where: { id: userId },
+                    data: { pushSubscription: subscription }
+                });
+            } catch (err) {
+                console.error('Subscription error:', err);
+            }
+        });
+
+        // Webpushr SID subscription
+        socket.on('subscribe webpushr', async ({ sid }) => {
+            try {
+                await prisma.user.update({
+                    where: { id: userId },
+                    data: { webpushrSid: sid }
+                });
+                console.log(`Saved Webpushr SID for user ${userId}`);
+            } catch (err) {
+                console.error('Webpushr SID save error:', err);
+            }
+        });
+
 
         // Edit message
         socket.on("edit message", async ({ messageId, content }, ack) => {
