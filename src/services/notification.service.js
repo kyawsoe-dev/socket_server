@@ -3,7 +3,7 @@ const prisma = require("../config/prisma");
 exports.getAll = async (userId) => {
     return await prisma.notification.findMany({
         where: { userId },
-        orderBy: { createdAt: "desc" },
+        orderBy: { id: "asc" },
         take: 100,
     });
 };
