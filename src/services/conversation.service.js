@@ -184,7 +184,6 @@ exports.deleteMessage = async (userId, messageId) => {
     return { success: true, message: "Message deleted", messageId: msg.id, conversationId: msg.conversationId };
 };
 
-
 // Add Member
 exports.addMember = async (ownerId, conversationId, userIdToAdd) => {
     const conv = await prisma.conversation.findUnique({
@@ -267,7 +266,6 @@ exports.searchUser = async (userId, query) => {
     return { users, groups };
 };
 
-
 // Suggested Users
 exports.suggestedUsers = async (userId) => {
     const memberConvs = await prisma.conversationMember.findMany({
@@ -303,8 +301,6 @@ exports.suggestedUsers = async (userId) => {
         orderBy: { createdAt: "desc" },
     });
 };
-
-
 
 // Details user
 exports.getUserDetails = async (currentUserId, userId) => {

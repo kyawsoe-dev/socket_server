@@ -28,6 +28,7 @@ model User {
   updatedAt        DateTime             @updatedAt
   members          ConversationMember[]
   messages         Message[]
+  notifications    Notification[]
 }
 
 model Conversation {
@@ -84,4 +85,17 @@ enum MessageType {
   AUDIO
   SYSTEM
   FILE
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  body      String?
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 }

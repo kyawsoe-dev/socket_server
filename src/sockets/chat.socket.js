@@ -1,26 +1,11 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../config/prisma");
-const { sendToSubscriber } = require('../services/webpushr.service');
-
 
 const JWT_SECRET = process.env.JWT_SECRET || "JWT_SECRET";
 
 // Keep online tracking
 const userSockets = new Map();
 const onlineUsers = new Map();
-
-
-const webpush = require('web-push');
-const vapidKeys = {
-    publicKey: process.env.VAPID_PUBLIC_KEY,
-    privateKey: process.env.VAPID_PRIVATE_KEY
-};
-
-webpush.setVapidDetails(
-    `mailto:${process.env.VAPID_EMAIL || 'kyawsoedeveloper@gmail.com'}`,
-    vapidKeys.publicKey,
-    vapidKeys.privateKey
-);
 
 function setupChatSocket(io) {
     io.use(async (socket, next) => {
@@ -36,6 +21,38 @@ function setupChatSocket(io) {
             next(new Error("Auth error"));
         }
     });
+
+
+    async function sendNotification(userId, notification) {
+        const dbNotif = await prisma.notification.create({
+            data: {
+                userId,
+                type: notification.type,
+                title: notification.title,
+                body: notification.body,
+                data: notification.data || {},
+            },
+        });
+
+        const sockets = userSockets.get(userId);
+        if (sockets) {
+            const payload = {
+                id: dbNotif.id,
+                type: dbNotif.type,
+                title: dbNotif.title,
+                body: dbNotif.body,
+                data: dbNotif.data,
+                read: dbNotif.read,
+                timestamp: dbNotif.createdAt.toISOString(),
+            };
+
+            sockets.forEach((socketId) => {
+                io.to(socketId).emit("notification", payload);
+            });
+        }
+
+        return dbNotif;
+    }
 
     io.on("connection", async (socket) => {
         const userId = socket.user.id;
@@ -60,7 +77,7 @@ function setupChatSocket(io) {
         });
         convs.forEach((c) => socket.join(`conv_${c.id}`));
 
-        // Send message
+        // SEND MESSAGE + NOTIFY
         socket.on("chat message", async (payload, ack) => {
             try {
                 const msg = await prisma.message.create({
@@ -90,109 +107,60 @@ function setupChatSocket(io) {
 
                 io.to(`conv_${payload.conversationId}`).emit("chat message", publicMsg);
 
-                const conv = await prisma.conversation.findUnique({
-                    where: { id: payload.conversationId },
-                    include: { members: { include: { user: true } } },
+                // NOTIFY OFFLINE/UNREAD MEMBERS
+                const members = await prisma.conversationMember.findMany({
+                    where: { conversationId: payload.conversationId },
+                    select: { userId: true, lastReadAt: true },
                 });
 
-                if (!conv || !conv.members) return;
+                for (const member of members) {
+                    if (member.userId === userId) continue;
 
-                for (const member of conv.members) {
-                    if (!member.user || member.userId === userId) continue;
+                    const isUnread = !member.lastReadAt || member.lastReadAt < msg.createdAt;
 
-                    const recipientId = member.userId;
-                    const sub = member.user.pushSubscription;
-                    const sid = member.user.webpushrSid;
+                    if (isUnread) {
+                        sendNotification(member.userId, {
+                            type: "NEW_MESSAGE",
+                            title: `${username} sent a message`,
+                            body: payload.content || "[Media]",
+                            conversationId: payload.conversationId,
+                            messageId: msg.id,
+                            sender: { id: userId, username },
+                        });
+                    }
+                }
 
-                    if (!onlineUsers.has(recipientId)) {
-                        let sent = false;
-                        if (sub) {
-                            try {
-                                await webpush.sendNotification(
-                                    sub,
-                                    JSON.stringify({
-                                        title: conv.isGroup
-                                            ? `${socket.user.username} in ${conv.title || "Group"}`
-                                            : `${socket.user.username}`,
-                                        body: publicMsg.content || "(Attachment)",
-                                        data: {
-                                            conversationId: publicMsg.conversationId,
-                                            isGroup: !!conv.isGroup,
-                                        },
-                                    }),
-                                    { TTL: 3600 }
-                                );
-                                sent = true;
-                            } catch (pushErr) {
-                                console.error("Local push error:", pushErr);
-                                if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-                                    await prisma.user.update({
-                                        where: { id: recipientId },
-                                        data: { pushSubscription: null }
-                                    });
-                                    console.log(`Removed expired native subscription for user ${recipientId}`);
-                                }
-                            }
-                        }
+                // MENTION DETECTION & NOTIFY
+                if (payload.content && payload.type === "TEXT") {
+                    const mentionRegex = /@([a-zA-Z0-9_]+)/g;
+                    const mentions = [...payload.content.matchAll(mentionRegex)].map(m => m[1]);
 
-                        if (!sent && sid) {
-                            try {
-                                await sendToSubscriber({
-                                    sid: sid,
-                                    title: conv.isGroup
-                                        ? `${socket.user.username} in ${conv.title || "Group"}`
-                                        : `${socket.user.username}`,
-                                    message: publicMsg.content || "(Attachment)",
-                                    target_url: `${process.env.APP_URL}/conversations/${publicMsg.conversationId}`,
+                    if (mentions.length > 0) {
+                        const mentionedUsers = await prisma.user.findMany({
+                            where: { username: { in: mentions } },
+                            select: { id: true, username: true },
+                        });
+
+                        for (const mu of mentionedUsers) {
+                            if (mu.id !== userId) {
+                                sendNotification(mu.id, {
+                                    type: "MENTION",
+                                    title: `${username} mentioned you`,
+                                    body: payload.content,
+                                    conversationId: payload.conversationId,
+                                    messageId: msg.id,
                                 });
-                            } catch (pushErr) {
-                                console.error("Webpushr push error:", pushErr);
-                                if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
-                                    await prisma.user.update({
-                                        where: { id: recipientId },
-                                        data: { webpushrSid: null }
-                                    });
-                                    console.log(`Removed expired webpushr SID for user ${recipientId}`);
-                                }
                             }
                         }
                     }
                 }
-                
+
                 if (ack) ack({ success: true, message: publicMsg });
             } catch (err) {
                 console.error("Message error:", err);
                 if (ack) ack({ success: false, error: err.message });
             }
         });
-
-
-        // Push subscription
-        socket.on('subscribe push', async (subscription) => {
-            try {
-                await prisma.user.update({
-                    where: { id: userId },
-                    data: { pushSubscription: subscription }
-                });
-                console.log('Native push saved for', userId);
-            } catch (e) {
-                console.error('Native push save error', e);
-            }
-        });
-
-        // Webpushr SID subscription
-        socket.on('subscribe webpushr', async ({ sid }) => {
-            try {
-                await prisma.user.update({
-                    where: { id: userId },
-                    data: { webpushrSid: sid }
-                });
-                console.log(`Saved Webpushr SID for user ${userId}`);
-            } catch (err) {
-                console.error('Webpushr SID save error:', err);
-            }
-        });
-
 
         // Edit message
         socket.on("edit message", async ({ messageId, content }, ack) => {
@@ -217,7 +185,6 @@ function setupChatSocket(io) {
             }
         });
 
-
         // Delete message
         socket.on("delete message", async ({ messageId }, ack) => {
             try {
@@ -240,7 +207,6 @@ function setupChatSocket(io) {
             }
         });
 
-
         // Typing indicator
         socket.on("typing", (data) => {
             socket.to(`conv_${data.conversationId}`).emit("typing", {
@@ -262,14 +228,14 @@ function setupChatSocket(io) {
             });
         });
 
-        // WebRTC signalling
-
+        // WebRTC signalling (group)
         ["group-offer", "group-answer", "group-candidate"].forEach((event) => {
             socket.on(`webrtc:${event}`, ({ conversationId, ...data }) => {
                 io.to(`conv_${conversationId}`).emit(`webrtc:${event}`, { fromUserId: userId, fromUsername: username, ...data });
             });
         });
 
+        // WebRTC signalling (1:1)
         ["offer", "answer", "candidate", "end"].forEach((event) => {
             socket.on(`webrtc:${event}`, ({ toUserId, ...data }) => {
                 const sockets = userSockets.get(toUserId) || new Set();
@@ -283,11 +249,9 @@ function setupChatSocket(io) {
             io.to(`conv_${conversationId}`).emit("webrtc:group-end", { fromUserId: userId });
         });
 
-
         // Call rejected
         socket.on("callRejected", ({ convId, from }) => {
             console.log(`Call rejected by user ${from} in conversation ${convId}`);
-
             io.to(`conv_${convId}`).emit("callRejectedNotification", { from });
         });
 

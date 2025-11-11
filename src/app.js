@@ -1,10 +1,20 @@
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const authRoutes = require("./routes/auth.routes");
 const conversationRoutes = require("./routes/conversation.routes");
+const notificationRoutes = require("./routes/notifications.routes");
+const RATE_LIMIT_MAX = process.env.RATE_LIMIT_MAX || 100;
 
 const app = express();
 
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: RATE_LIMIT_MAX,
+    message: "Too many requests, please try again later.",
+});
+
+app.use(limiter);
 app.use(
     cors({
         origin: "*",
@@ -16,6 +26,7 @@ app.use(express.json());
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/conversations", conversationRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
     res.status(200).json({
